@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyCast AI | Next-Gen Weather</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap');
+
+        :root {
+            --accent: #818cf8;
+            --bg-dark: #020617;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at top right, #1e293b, #020617);
+            min-height: 100vh;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        }
+
+        .nav-link {
+            position: relative;
+            transition: color 0.3s ease;
+            cursor: pointer;
+        }
+
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            width: 0%;
+            height: 2px;
+            background: var(--accent);
+            transition: all 0.3s ease;
+            transform: translateX(-50%);
+        }
+
+        .nav-link.active::after { width: 100%; }
+        .nav-link.active { color: white; }
+
+        .weather-gradient {
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+        }
+
+        .page-transition {
+            animation: slideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .loading-ring {
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255,255,255,.2);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .shimmer {
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        
+        .modal-backdrop {
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(12px);
+        }
+
+        .auth-tab.active {
+            color: white;
+            border-bottom: 2px solid var(--accent);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center">
+
+    <!-- Top Utility Bar (Auth) -->
+    <div class="w-full max-w-6xl flex justify-end px-6 md:px-12 pt-4">
+        <div id="auth-section" class="flex items-center gap-4">
+            <!-- Logged Out View -->
+            <div id="view-logged-out" class="flex items-center gap-4">
+                <button onclick="openAuthModal('login')" class="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors">Login</button>
+                <button onclick="openAuthModal('signup')" class="text-[10px] font-black uppercase tracking-widest bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full border border-white/10 transition-all">Get Started</button>
+            </div>
+            <!-- Logged In View -->
+            <div id="view-logged-in" class="hidden flex items-center gap-4">
+                <div class="flex items-center gap-3 pr-4 border-r border-white/10">
+                    <div class="text-right hidden sm:block">
+                        <p class="text-[9px] font-black text-indigo-400 uppercase tracking-widest leading-none">Pro Member</p>
+                        <p class="text-[11px] font-bold text-white">Alex Storm</p>
+                    </div>
+                    <div class="w-9 h-9 rounded-xl weather-gradient flex items-center justify-center font-bold text-sm shadow-lg shadow-indigo-500/20">AS</div>
+                </div>
+                <button onclick="handleSignOut()" class="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-red-400 transition-colors">Sign Out</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Navigation -->
+    <nav class="w-full max-w-6xl flex justify-between items-center p-6 md:px-12 sticky top-0 z-50 backdrop-blur-xl border-b border-white/5">
+        <div class="flex items-center gap-2 cursor-pointer" onclick="switchPage('home')">
+            <div class="w-8 h-8 weather-gradient rounded-lg flex items-center justify-center font-bold text-white shadow-lg">S</div>
+            <h1 class="text-xl font-extrabold tracking-tighter">SkyCast<span class="text-indigo-500">AI</span></h1>
+        </div>
+        
+        <ul class="hidden md:flex gap-10 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+            <li><a onclick="switchPage('home')" id="link-home" class="nav-link active">Home</a></li>
+            <li><a onclick="switchPage('about')" id="link-about" class="nav-link">About Us</a></li>
+            <li><a onclick="switchPage('works')" id="link-works" class="nav-link">How it Works</a></li>
+            <li><a onclick="switchPage('news')" id="link-news" class="nav-link">News</a></li>
+        </ul>
+
+        <div id="loader" class="invisible flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10">
+            <div class="loading-ring"></div>
+            <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Syncing</span>
+        </div>
+    </nav>
+
+    <main class="w-full max-w-5xl px-6 pt-12 pb-24">
+        
+        <!-- HOME PAGE -->
+        <div id="page-home" class="page-transition space-y-10">
+            <!-- Search -->
+            <div class="max-w-2xl mx-auto relative">
+                <input type="text" id="citySearch" 
+                    placeholder="Where are we checking today?" 
+                    class="w-full bg-slate-900/50 border border-white/10 py-5 px-8 rounded-full text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-600">
+                <button onclick="getWeather()" class="absolute right-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-500 px-8 rounded-full font-bold transition-all active:scale-95 shadow-lg">
+                    Analyze
+                </button>
+            </div>
+
+            <!-- Dashboard -->
+            <div id="dashboard" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Main Stats -->
+                <div class="lg:col-span-2 glass rounded-[3rem] p-10 relative overflow-hidden group">
+                    <div class="relative z-10 flex flex-col h-full justify-between min-h-[350px]">
+                        <div class="flex justify-between items-start">
+                            <div class="space-y-1">
+                                <h2 id="resCity" class="text-4xl font-black tracking-tighter">City Name</h2>
+                                <p id="resDate" class="text-slate-400 font-medium">Monday, 12 June</p>
+                            </div>
+                            <div id="resEmoji" class="text-8xl filter drop-shadow-2xl transition-transform group-hover:scale-110 duration-500">☀️</div>
+                        </div>
+
+                        <div>
+                            <div class="flex items-baseline gap-2">
+                                <span id="resTemp" class="text-[9rem] font-black leading-none tracking-tighter">--</span>
+                                <span class="text-4xl font-bold text-indigo-400">°C</span>
+                            </div>
+                            <p id="resDesc" class="text-xl font-bold uppercase tracking-[0.3em] text-indigo-400 mt-2">Clear Skies</p>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-4 pt-8 border-t border-white/10">
+                            <div>
+                                <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Wind</p>
+                                <p id="resWind" class="text-lg font-bold">-- km/h</p>
+                            </div>
+                            <div>
+                                <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Humidity</p>
+                                <p id="resHum" class="text-lg font-bold">--%</p>
+                            </div>
+                            <div>
+                                <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Apparent</p>
+                                <p id="resApp" class="text-lg font-bold">--°C</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="absolute -right-20 -top-20 w-80 h-80 bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+                </div>
+
+                <!-- AI Sidebar -->
+                <div class="glass rounded-[3rem] p-10 space-y-8 flex flex-col">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-indigo-500/20 rounded-xl text-indigo-400">✨</div>
+                        <h3 class="text-xs font-black uppercase tracking-[0.3em]">AI Insight</h3>
+                    </div>
+
+                    <div class="flex-grow space-y-6">
+                        <div class="bg-white/5 border border-white/5 p-6 rounded-3xl relative overflow-hidden">
+                            <div id="aiShimmer" class="absolute inset-0 shimmer hidden"></div>
+                            <p id="resAI" class="text-slate-300 italic leading-relaxed font-medium">
+                                Search a city to generate a real-time weather vibe check.
+                            </p>
+                        </div>
+
+                        <div class="space-y-3">
+                            <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest">AI Recommendation</p>
+                            <div id="resAct" class="bg-indigo-600/20 border border-indigo-400/20 p-5 rounded-2xl text-sm font-bold text-indigo-200">
+                                Waiting for analysis...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Welcome State -->
+            <div id="welcome" class="glass rounded-[3rem] p-24 text-center border-dashed border-2 border-white/5 opacity-50">
+                <div class="text-7xl mb-6">🌍</div>
+                <h2 class="text-3xl font-black tracking-tight mb-2">Ready to explore?</h2>
+                <p class="text-slate-400 font-medium">Enter any location above for hyper-local AI weather intel.</p>
+            </div>
+        </div>
+
+        <!-- ABOUT PAGE -->
+        <div id="page-about" class="page-transition hidden max-w-3xl mx-auto space-y-12">
+            <div class="space-y-4">
+                <h2 class="text-5xl font-black tracking-tighter">Intelligent <span class="text-indigo-500">Forecasting.</span></h2>
+                <p class="text-xl text-slate-400 leading-relaxed">SkyCast AI bridges the gap between raw data and human experience. We don't just tell you the temperature; we tell you how to feel about it.</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="glass p-8 rounded-[2rem] space-y-4">
+                    <h4 class="text-indigo-400 font-bold uppercase tracking-widest text-xs">Our Vision</h4>
+                    <p class="text-sm text-slate-300">To create the world's most intuitive weather platform where data speaks your language.</p>
+                </div>
+                <div class="glass p-8 rounded-[2rem] space-y-4">
+                    <h4 class="text-indigo-400 font-bold uppercase tracking-widest text-xs">Our Core</h4>
+                    <p class="text-sm text-slate-300">Built on Open-Meteo satellite feeds and processed through Gemini 2.5 Flash LLMs.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- WORKS PAGE -->
+        <div id="page-works" class="page-transition hidden space-y-12 text-center">
+            <div class="space-y-2">
+                <h2 class="text-5xl font-black tracking-tighter text-indigo-500">The Pipeline</h2>
+                <p class="text-slate-400 font-medium">Three layers of precision for every query.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="glass p-10 rounded-[2.5rem] space-y-6">
+                    <div class="text-5xl">🛰️</div>
+                    <h3 class="text-xl font-bold">1. Capture</h3>
+                    <p class="text-sm text-slate-400 leading-relaxed">We poll global satellite constellations to get raw atmospheric pressure, humidity, and wind vectors.</p>
+                </div>
+                <div class="glass p-10 rounded-[2.5rem] space-y-6 border-indigo-500/20">
+                    <div class="text-5xl">🧠</div>
+                    <h3 class="text-xl font-bold">2. Synthesize</h3>
+                    <p class="text-sm text-slate-400 leading-relaxed">The Gemini AI model interprets these numbers using context-aware patterns to understand the "vibe".</p>
+                </div>
+                <div class="glass p-10 rounded-[2.5rem] space-y-6">
+                    <div class="text-5xl">✨</div>
+                    <h3 class="text-xl font-bold">3. Personalize</h3>
+                    <p class="text-sm text-slate-400 leading-relaxed">You receive a custom summary and activity suggestions tailored to the current conditions.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEWS PAGE -->
+        <div id="page-news" class="page-transition hidden space-y-10">
+            <h2 class="text-4xl font-black tracking-tighter">Atmospheric <span class="text-indigo-500">Briefings</span></h2>
+            <div class="grid grid-cols-1 gap-6">
+                <div class="glass p-8 rounded-3xl flex flex-col md:flex-row gap-8 group cursor-pointer hover:bg-white/5 transition-colors">
+                    <div class="w-full md:w-48 h-32 bg-indigo-500/20 rounded-2xl flex items-center justify-center text-4xl">🌤️</div>
+                    <div class="space-y-3">
+                        <span class="text-[10px] text-indigo-400 font-black uppercase tracking-[0.2em]">Global Patterns</span>
+                        <h3 class="text-2xl font-bold group-hover:text-indigo-300 transition-colors">AI Accuracy in Storm Tracking jumps 20%</h3>
+                        <p class="text-slate-400 text-sm">New research highlights how generative models are outperforming traditional physics engines in coastal prediction...</p>
+                    </div>
+                </div>
+                <div class="glass p-8 rounded-3xl flex flex-col md:flex-row gap-8 group cursor-pointer hover:bg-white/5 transition-colors">
+                    <div class="w-full md:w-48 h-32 bg-purple-500/20 rounded-2xl flex items-center justify-center text-4xl">🌲</div>
+                    <div class="space-y-3">
+                        <span class="text-[10px] text-purple-400 font-black uppercase tracking-[0.2em]">Eco-Watch</span>
+                        <h3 class="text-2xl font-bold group-hover:text-purple-300 transition-colors">Spring Bloom starts 12 days early in Europe</h3>
+                        <p class="text-slate-400 text-sm">Satellite mapping indicates a historic shift in vegetation cycles due to the mild winter...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- AUTH MODAL -->
+    <div id="auth-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-6">
+        <div class="absolute inset-0 modal-backdrop" onclick="closeAuthModal()"></div>
+        <div class="glass w-full max-w-md rounded-[3rem] p-10 relative z-10 space-y-8">
+            <div class="flex justify-center gap-8 border-b border-white/10 pb-4">
+                <button onclick="setAuthTab('login')" id="tab-login" class="auth-tab active text-[11px] font-black uppercase tracking-widest pb-2 transition-all">Login</button>
+                <button onclick="setAuthTab('signup')" id="tab-signup" class="auth-tab text-slate-500 text-[11px] font-black uppercase tracking-widest pb-2 transition-all">Sign Up</button>
+            </div>
+
+            <div id="auth-form" class="space-y-6">
+                <div id="signup-fields" class="hidden space-y-4">
+                    <input type="text" placeholder="Full Name" class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm">
+                </div>
+                <div class="space-y-4">
+                    <input type="email" placeholder="Email address" class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm">
+                    <input type="password" placeholder="Password" class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-sm">
+                </div>
+                
+                <button onclick="handleLogin()" id="auth-submit-btn" class="w-full weather-gradient py-4 rounded-2xl font-bold shadow-xl shadow-indigo-500/20 hover:opacity-90 transition-all text-sm">
+                    Enter SkyCast
+                </button>
+            </div>
+            
+            <div class="space-y-4 text-center">
+                <p class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Social Authentication</p>
+                <div class="flex gap-3">
+                    <button class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl hover:bg-white/10 transition-colors font-bold text-[10px] uppercase tracking-wider">Google</button>
+                    <button class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl hover:bg-white/10 transition-colors font-bold text-[10px] uppercase tracking-wider">Apple</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = ""; 
+
+        // AUTH SYSTEM
+        let currentAuthTab = 'login';
+
+        function openAuthModal(tab = 'login') {
+            document.getElementById('auth-modal').classList.remove('hidden');
+            setAuthTab(tab);
+        }
+
+        function closeAuthModal() {
+            document.getElementById('auth-modal').classList.add('hidden');
+        }
+
+        function setAuthTab(tab) {
+            currentAuthTab = tab;
+            const signupFields = document.getElementById('signup-fields');
+            const submitBtn = document.getElementById('auth-submit-btn');
+            const loginTab = document.getElementById('tab-login');
+            const signupTab = document.getElementById('tab-signup');
+
+            if (tab === 'signup') {
+                signupFields.classList.remove('hidden');
+                submitBtn.textContent = "Create Account";
+                signupTab.classList.add('active');
+                loginTab.classList.remove('active');
+                loginTab.classList.add('text-slate-500');
+            } else {
+                signupFields.classList.add('hidden');
+                submitBtn.textContent = "Enter SkyCast";
+                loginTab.classList.add('active');
+                signupTab.classList.remove('active');
+                signupTab.classList.add('text-slate-500');
+            }
+        }
+
+        function handleLogin() {
+            closeAuthModal();
+            document.getElementById('view-logged-out').classList.add('hidden');
+            document.getElementById('view-logged-in').classList.remove('hidden');
+            const resAI = document.getElementById('resAI');
+            if(resAI) resAI.textContent = "Identity verified. Personalizing your atmospheric dashboard...";
+        }
+
+        function handleSignOut() {
+            document.getElementById('view-logged-out').classList.remove('hidden');
+            document.getElementById('view-logged-in').classList.add('hidden');
+            switchPage('home');
+        }
+
+        // NAVIGATION & WEATHER ENGINE
+        function switchPage(page) {
+            document.querySelectorAll('.page-transition').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`page-${page}`).classList.remove('hidden');
+            document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+            document.getElementById(`link-${page}`).classList.add('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function geminiAI(prompt) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch (err) { return "Analyzing the atmosphere..."; }
+        }
+
+        async function getWeather() {
+            const cityInput = document.getElementById('citySearch');
+            const city = cityInput.value.trim();
+            if (!city) return;
+
+            const loader = document.getElementById('loader');
+            const dashboard = document.getElementById('dashboard');
+            const welcome = document.getElementById('welcome');
+            const aiShimmer = document.getElementById('aiShimmer');
+
+            loader.style.visibility = 'visible';
+            aiShimmer.classList.remove('hidden');
+            document.getElementById('resAI').textContent = "Consulting Gemini AI...";
+
+            try {
+                const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`);
+                const geoData = await geo.json();
+                if (!geoData.results) throw new Error();
+
+                const { latitude, longitude, name, country } = geoData.results[0];
+                const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,apparent_temperature`);
+                const wData = await w.json();
+                const c = wData.current;
+
+                document.getElementById('resCity').textContent = `${name}, ${country || ''}`;
+                document.getElementById('resTemp').textContent = Math.round(c.temperature_2m);
+                document.getElementById('resWind').textContent = `${c.wind_speed_10m} km/h`;
+                document.getElementById('resHum').textContent = `${c.relative_humidity_2m}%`;
+                document.getElementById('resApp').textContent = Math.round(c.apparent_temperature);
+                document.getElementById('resDate').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+                const codeMap = { 0: ["☀️", "Clear Sky"], 1: ["🌤️", "Mainly Clear"], 2: ["⛅", "Partly Cloudy"], 3: ["☁️", "Overcast"], 45: ["🌫️", "Foggy"], 61: ["🌧️", "Rainy"], 71: ["❄️", "Snowy"], 95: ["⚡", "Stormy"] };
+                const [icon, label] = codeMap[c.weather_code] || ["🌡️", "Variable"];
+                document.getElementById('resEmoji').textContent = icon;
+                document.getElementById('resDesc').textContent = label;
+
+                welcome.classList.add('hidden');
+                dashboard.classList.remove('hidden');
+
+                const prompt = `Context: Weather in ${name}. Temp ${c.temperature_2m}C, Wind ${c.wind_speed_10m}km/h, Sky: ${label}. 
+                Provide a witty 2-sentence vibe check and 1 activity. Format: VIBE: [text] ACT: [text]`;
+                const aiResp = await geminiAI(prompt);
+                
+                const v = aiResp.split('ACT:')[0].replace('VIBE:', '').trim();
+                const a = aiResp.split('ACT:')[1]?.trim() || "Stay curious!";
+                
+                document.getElementById('resAI').textContent = v;
+                document.getElementById('resAct').textContent = a;
+
+            } catch (err) {
+                alert("Location not found in our database.");
+            } finally {
+                loader.style.visibility = 'hidden';
+                aiShimmer.classList.add('hidden');
+            }
+        }
+
+        document.getElementById('citySearch').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') getWeather();
+        });
+    </script>
+</body>
+</html>
